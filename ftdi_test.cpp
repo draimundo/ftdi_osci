@@ -1,7 +1,6 @@
 //g++ -I ../include/libftdi -I ../include/libusb-1.0 -I ../include/boost_1_77_0 ftdi_test.cpp -L ../lib64 -lftdi1 -lftdipp1 -lusb-1.0 -o ../bin64/ftdi_test -Wall
 
 #include <ftdi.hpp>
-#include <usb.h>
 #include <stdio.h>
 #include <iostream>
 #include <string.h>

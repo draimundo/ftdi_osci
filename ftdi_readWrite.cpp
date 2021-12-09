@@ -2,7 +2,8 @@
 //g++ -I ../include/libftdi -I ../include/libusb-1.0 -I ../include/boost_1_77_0 ftdi_testGlobal.cpp -L ../lib64 -lftdi1 -lftdipp1 -lusb-1.0 -o ../bin64/ftdi_testGlobal -Wall
 
 // Linux:
-//g++ -I include/libftdi -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_testGlobal -Wall
+//g++ ftdi_readWrite.cpp -I include/libftdi -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_readWrite -Wall
+
 
 #include <ftdi.hpp>
 #include <stdio.h>
@@ -11,10 +12,12 @@
 #include <time.h>
 #include <math.h>
 #include <fstream>
+#include <vector>
 
 
 namespace Osci{
    const uint32_t bufSize = 100000000;
+   const unsigned int chunkSize = 0x5FFFFFFE;
 }
 
 // Config for FT232
@@ -67,8 +70,8 @@ int main(void){
    }
    int32_t iRead = 0;
 
+
    // Initialize FTDI chip
-   
    int ftdi_status = ftdi_init(&Ft232::context);
    if ( ftdi_status != 0 ) {
       std::cout << "Failed to initialize device\n";
@@ -87,8 +90,8 @@ int main(void){
    ftdi_tcioflush(&Ft232::context);
 
    // Max out chunksize
-   ftdi_write_data_set_chunksize(&Ft232::context, 0x5FFFFFFE);
-   ftdi_read_data_set_chunksize(&Ft232::context, 0x5FFFFFFE);
+   ftdi_write_data_set_chunksize(&Ft232::context, Osci::chunkSize);
+   ftdi_read_data_set_chunksize(&Ft232::context, Osci::chunkSize);
 
    // Sleep 50 ms for setup to complete
    struct timespec ts = { .tv_sec = 0, .tv_nsec = 50000000};
@@ -115,9 +118,21 @@ int main(void){
    memset(writeBuf, 0, Osci::bufSize);
    iWrite = 0;
 
-   int nsamples = 450000;
-   for(int t = 0; t<nsamples; t++){
-      uint16_t dacVal = 0;
+   // Read the input csv
+   std::ifstream inFile;
+   inFile.open("in.csv");
+   std::vector<uint16_t> dacVec;
+   std::string line;
+   uint16_t nSamples = 0;
+   while(getline(inFile, line)){
+      dacVec.push_back((uint16_t) std::stoi(line));
+      nSamples++;
+   }
+   inFile.close();
+
+   // Prepare the write buffer
+   for(int t = 0; t<nSamples; t++){
+      uint16_t dacVal = dacVec[t];
 
       //Write DAC
       writeBuf[(iWrite)++] = SET_BITS_LOW;
@@ -178,7 +193,6 @@ int main(void){
    writeBuf[(iWrite)++] = SET_BITS_LOW;
    writeBuf[(iWrite)++] = Ft232::pinInitialState;
    writeBuf[(iWrite)++] = Ft232::pinDirection;
-
 
    // Write and read data from Ft232
    ftdi_usb_purge_tx_buffer(&Ft232::context);
