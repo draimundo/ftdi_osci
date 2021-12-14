@@ -1,15 +1,10 @@
 // Windows:
-//g++ -I ../include/libftdi -I ../include/libusb-1.0 -I ../include/boost_1_77_0 ftdi_testGlobal.cpp -L ../lib64 -lftdi1 -lftdipp1 -lusb-1.0 -o ../bin64/ftdi_testGlobal -Wall
+//g++ ftdi_testGlobal.cpp -I include/ -L include/libftdi -lftdi1 -lftdipp1 -o build/ftdi_testGlobal -Wall
 
-// Linux:
-//g++ -I include/libftdi -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_testGlobal -Wall
-
-#include <ftdi.hpp>
+#include <libftdi/ftdi.hpp>
 #include <stdio.h>
 #include <iostream>
 #include <string.h>
-#include <time.h>
-#include <math.h>
 #include <fstream>
 
 
@@ -115,7 +110,7 @@ int main(void){
    memset(writeBuf, 0, Osci::bufSize);
    iWrite = 0;
 
-   int nsamples = 450000;
+   int nsamples = 600000;
    for(int t = 0; t<nsamples; t++){
       uint16_t dacVal = 0;
 
@@ -186,7 +181,7 @@ int main(void){
 
    // Get the data that was read
    std::ofstream outFile;
-   outFile.open("out.csv");
+   outFile.open ("out.csv");
    if (ftdi_read_data(&Ft232::context, readBuf, iRead) != iRead) std::cout << "Read failed\n";
    else {
       for(int i = 0; i < iRead; i+=6){

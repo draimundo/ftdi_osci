@@ -1,18 +1,15 @@
 // Windows:
-//g++ -I ../include/libftdi -I ../include/libusb-1.0 -I ../include/boost_1_77_0 ftdi_testGlobal.cpp -L ../lib64 -lftdi1 -lftdipp1 -lusb-1.0 -o ../bin64/ftdi_testGlobal -Wall
+//g++ ftdi_readWrite.cpp -I include/ -L include/libftdi -lftdi1 -lftdipp1 -o build/ftdi_readWrite -Wall
 
 // Linux:
 //g++ ftdi_readWrite.cpp -I include/libftdi -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_readWrite -Wall
 
 
-#include <ftdi.hpp>
+#include <libftdi/ftdi.hpp>
 #include <stdio.h>
 #include <iostream>
 #include <string.h>
-#include <time.h>
-#include <math.h>
 #include <fstream>
-#include <vector>
 
 
 namespace Osci{
@@ -70,7 +67,6 @@ int main(void){
    }
    int32_t iRead = 0;
 
-
    // Initialize FTDI chip
    int ftdi_status = ftdi_init(&Ft232::context);
    if ( ftdi_status != 0 ) {
@@ -88,7 +84,6 @@ int main(void){
    ftdi_set_bitmode(&Ft232::context, 0, 0); // reset
    ftdi_set_bitmode(&Ft232::context, 0, BITMODE_MPSSE); // enable mpsse on all bits
    ftdi_tcioflush(&Ft232::context);
-
    // Max out chunksize
    ftdi_write_data_set_chunksize(&Ft232::context, Osci::chunkSize);
    ftdi_read_data_set_chunksize(&Ft232::context, Osci::chunkSize);
@@ -121,18 +116,13 @@ int main(void){
    // Read the input csv
    std::ifstream inFile;
    inFile.open("in.csv");
-   std::vector<uint16_t> dacVec;
    std::string line;
-   uint16_t nSamples = 0;
-   while(getline(inFile, line)){
-      dacVec.push_back((uint16_t) std::stoi(line));
-      nSamples++;
-   }
-   inFile.close();
 
    // Prepare the write buffer
-   for(int t = 0; t<nSamples; t++){
-      uint16_t dacVal = dacVec[t];
+   while(getline(inFile, line)){
+      // uint16_t dacVal = dacVec[t];
+
+      uint16_t dacVal = (uint16_t) std::stoi(line);
 
       //Write DAC
       writeBuf[(iWrite)++] = SET_BITS_LOW;
@@ -188,6 +178,7 @@ int main(void){
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
       (iRead) += 2;
    }
+   inFile.close();
 
    // Reset CS pins
    writeBuf[(iWrite)++] = SET_BITS_LOW;
@@ -197,7 +188,7 @@ int main(void){
    // Write and read data from Ft232
    ftdi_usb_purge_tx_buffer(&Ft232::context);
    ftdi_write_data_submit(&Ft232::context, writeBuf, iWrite);
-
+   
    // Get the data that was read
    std::ofstream outFile;
    outFile.open("out.csv");
