@@ -2,7 +2,7 @@
 //g++ ftdi_readWrite.cpp -I include/ -L include/libftdi -lftdi1 -lftdipp1 -o build/ftdi_readWrite -Wall
 
 // Linux:
-//g++ ftdi_readWrite.cpp -I include/libftdi -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_readWrite -Wall
+//g++ ftdi_readWrite.cpp -I include/ -L include/libftdi -lftdi1 -lftdipp1 -lusb-1.0 -o build/ftdi_readWrite -Wall
 
 
 #include <libftdi/ftdi.hpp>
