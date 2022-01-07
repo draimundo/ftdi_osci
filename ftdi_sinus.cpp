@@ -76,7 +76,7 @@ void sine_dac(unsigned char* buf, unsigned int* icmd, int nperiods, float amplit
    float t0 = 1.5E-6;
    int nsamples = 200000;
    for(int t = 0; t<nsamples; t++){
-      uint16_t fval = (uint16_t)((amplitude * sin(2.0*M_PI*((float)nperiods)*((float)t)/((float) nsamples)) + offset)*0x0FFF);
+      uint16_t fval = (uint16_t)(((amplitude * sin(2.0*M_PI*((float)nperiods)*((float)t)/((float) nsamples))) + offset)*0x0FFF);
       //std::cout << std::hex << fval << "\n";
       write_DAC60501(buf, icmd,  fval);
    }
