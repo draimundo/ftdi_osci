@@ -72,11 +72,11 @@ void write_DAC60501(unsigned char* buf, unsigned int* icmd, uint16_t val){
    buf[(*icmd)++] = pinDirection;
 }
 
-void sine_dac(unsigned char* buf, unsigned int* icmd, int nperiods, int amplitude){
+void sine_dac(unsigned char* buf, unsigned int* icmd, int nperiods, float amplitude, float offset){
    float t0 = 1.5E-6;
    int nsamples = 200000;
    for(int t = 0; t<nsamples; t++){
-      uint16_t fval = (uint16_t)((0.5 * sin(2.0*M_PI*((float)nperiods)*((float)t)/((float) nsamples)) + 0.5)*amplitude);
+      uint16_t fval = (uint16_t)((amplitude * sin(2.0*M_PI*((float)nperiods)*((float)t)/((float) nsamples)) + offset)*0x0FFF);
       //std::cout << std::hex << fval << "\n";
       write_DAC60501(buf, icmd,  fval);
    }
@@ -169,10 +169,25 @@ int main(int argc, char *argv[])
    //    write_DAC80501(buf, &icmd, i);
    // }
 
-   int nperiods = (int) std::stoi(argv[1]);
-   int amplitude = (int) std::stoi(argv[2]);
+   int nperiods = 30000;
+   float amplitude = 0.5;
+   float offset = 0.5;
+   switch (argc)
+   {
+   case 4:
+      offset = (float) std::stof(argv[3]);
+   case 3:
+      amplitude = (float) std::stof(argv[2]);
+   case 2:
+      nperiods = (int) std::stoi(argv[1]);
+      break;
 
-   sine_dac(buf, &icmd, nperiods, amplitude);
+   default:
+      break;
+   }
+
+
+   sine_dac(buf, &icmd, nperiods, amplitude, offset);
    std::cout << icmd;
 
    // buf[icmd++] = SET_BITS_LOW;
