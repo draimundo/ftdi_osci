@@ -41,6 +41,7 @@ namespace Ft232 {
 
 namespace Dacx0501{
    const uint8_t DAC_DATA = 0x08;
+   const uint8_t CONFIG = 0x03;
 }
 
 namespace Lt230x{
@@ -49,6 +50,13 @@ namespace Lt230x{
       ODD = 0x40,
       UNIPOLAR = 0x08
    };
+}
+
+float outToVolt(uint16_t out){
+   uint16_t sign = out&0x800;
+   float ret = -1.0*sign + 1.0*(out&0x7FF);
+   ret = (((ret+2048.0)/4095.0)*5.0)-2.5;
+   return ret;
 }
 
 
@@ -99,9 +107,25 @@ int main(void){
    writeBuf[iWrite++] = 0x00;            // argument: high bit.
    writeBuf[iWrite++] = DIS_ADAPTIVE;    // opcode: disable adaptive clocking
    writeBuf[iWrite++] = DIS_3_PHASE;     // opcode: disable 3-phase clocking
-   writeBuf[iWrite++] = SET_BITS_LOW;    // opcode: set low bits (ADBUS[0-7])
-   writeBuf[iWrite++] = Ft232::pinInitialState; // argument: inital pin states
-   writeBuf[iWrite++] = Ft232::pinDirection;    // argument: pin direction
+   // writeBuf[iWrite++] = SET_BITS_LOW;    // opcode: set low bits (ADBUS[0-7])
+   // writeBuf[iWrite++] = Ft232::pinInitialState; // argument: inital pin states
+   // writeBuf[iWrite++] = Ft232::pinDirection;    // argument: pin direction
+   
+   writeBuf[(iWrite)++] = SET_BITS_LOW;
+   writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3;
+   writeBuf[(iWrite)++] = Ft232::pinDirection;
+
+   writeBuf[(iWrite)++] = MPSSE_DO_WRITE;
+   writeBuf[(iWrite)++] = 0x02; // length: low byte, 0x0002 ==> 3 bytes
+   writeBuf[(iWrite)++] = 0x00; // length: high byte
+   writeBuf[(iWrite)++] = Dacx0501::CONFIG; 
+   writeBuf[(iWrite)++] = (uint8_t) 0x01; // disable internal ref
+   writeBuf[(iWrite)++] = (uint8_t) 0x00;
+
+   writeBuf[(iWrite)++] = SET_BITS_LOW;
+   writeBuf[(iWrite)++] = Ft232::pinInitialState;
+   writeBuf[(iWrite)++] = Ft232::pinDirection;
+
    // Write the setup to the chip.
    if ( ftdi_write_data(&Ft232::context, writeBuf, iWrite) != iWrite ) {
       std::cout << "Write failed\n";
@@ -126,25 +150,25 @@ int main(void){
 
       //Write DAC
       writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS0;
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
       writeBuf[(iWrite)++] = MPSSE_DO_WRITE;
       writeBuf[(iWrite)++] = 0x02; // length: low byte, 0x0002 ==> 3 bytes
       writeBuf[(iWrite)++] = 0x00; // length: high byte
       writeBuf[(iWrite)++] = Dacx0501::DAC_DATA; 
-      writeBuf[(iWrite)++] = (uint8_t) ((dacVal >> 8) & 0x00FF);
-      writeBuf[(iWrite)++] = (uint8_t) (dacVal & 0x00FF);
+      writeBuf[(iWrite)++] = (uint8_t) (((dacVal & 0x0FF0) >> 4) & 0x00FF);
+      writeBuf[(iWrite)++] = (uint8_t) ((dacVal & 0x000F) << 4); //60501 has 12bits, and needs the 4 last ones to be 0
 
       // Read ADC0
       writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS1;
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS0;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
-      writeBuf[(iWrite)++] = Lt230x::UNIPOLAR;
+      writeBuf[(iWrite)++] = 0x00;//Lt230x::UNIPOLAR;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
@@ -152,13 +176,13 @@ int main(void){
 
       // Read ADC1
       writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS2;
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS1;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
-      writeBuf[(iWrite)++] = Lt230x::UNIPOLAR;
+      writeBuf[(iWrite)++] = 0x00;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
@@ -166,13 +190,13 @@ int main(void){
 
       // Read ADC2
       writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3;
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS2;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
-      writeBuf[(iWrite)++] = Lt230x::UNIPOLAR;
+      writeBuf[(iWrite)++] = 0x00;
 
       writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
@@ -192,17 +216,28 @@ int main(void){
    // Get the data that was read
    std::ofstream outFile;
    outFile.open("out.csv");
+   float res = 0;
    if (ftdi_read_data(&Ft232::context, readBuf, iRead) != iRead) std::cout << "Read failed\n";
    else {
       for(int i = 0; i < iRead; i+=6){
-         uint16_t adc0 = (readBuf[i] << 4) + (readBuf[i+1] & 0x0F);
+         uint16_t adc0 = (((uint16_t) readBuf[i]) << 4) + (readBuf[i+1] & 0x0F);
          uint16_t adc1 = (readBuf[i+2] << 4) + (readBuf[i+3] & 0x0F);
          uint16_t adc2 = (readBuf[i+4] << 4) + (readBuf[i+5] & 0x0F);
+         // std::cout << std::hex << (unsigned int) ((readBuf[i] << 4) + (readBuf[i+1] & 0x0F)) << "\n";
          outFile << std::dec << adc0 << "; " << std::dec << adc1 << "; " << std::dec << adc2 << "\n";
+         if (i >=6){ // the first value read is always 0xFFF
+            // std::cout << outToVolt(adc0) << '\n';
+            res += outToVolt(adc0);
+         }
+         
       }
    }
+   float avg = res/((iRead)/6.0-1.0);
+   // std::cout << std::dec << ((iRead)/6-1) << " avg\n"; //average removing the first value
+   // std::cout << std::hex << avg << " res\n"; //average removing the first value
+   std::cout << avg;
    outFile.close();
-   std::cout << "Done\n";
+   std::cout << "\nDone\n";
 
    // Clear system
    free(writeBuf);
