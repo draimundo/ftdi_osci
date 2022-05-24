@@ -31,7 +31,7 @@ namespace Ft232 {
       l3 = 0x80  // ADBUS7, general-ourpose i/o, GPIOL3
    };
    const uint16_t vendor = 0x0403;
-   const uint16_t product = 0x6014;
+   const uint16_t product = 0x6014; //6014 or 6010
 
    const uint8_t pinInitialState = pins::CS0|pins::CS1|pins::CS2|pins::CS3; // Set these pins high
    const uint8_t pinDirection    = pins::SK|pins::DO|pins::CS0|pins::CS1|pins::CS2|pins::CS3; // Use these pins as outputs
@@ -133,6 +133,9 @@ int main(void){
       std::cout << "Config successful\n";
    }
 
+   struct timespec ts2 = { .tv_sec = 0, .tv_nsec = 50000000};
+   nanosleep(&ts2, NULL); 
+
    // Zero the buffer for good measure
    memset(writeBuf, 0, Osci::bufSize);
    iWrite = 0;
@@ -165,12 +168,12 @@ int main(void){
       writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS0;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
       writeBuf[(iWrite)++] = 0x00;//Lt230x::UNIPOLAR;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
       (iRead) += 2;
 
@@ -179,12 +182,12 @@ int main(void){
       writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS1;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
       writeBuf[(iWrite)++] = 0x00;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
       (iRead) += 2;
 
@@ -193,12 +196,12 @@ int main(void){
       writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS2;
       writeBuf[(iWrite)++] = Ft232::pinDirection;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
       writeBuf[(iWrite)++] = 0x00;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE | MPSSE_READ_NEG;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
       (iRead) += 2;
    }
