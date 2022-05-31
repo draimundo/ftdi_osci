@@ -30,8 +30,10 @@ namespace Ft232 {
       CS3 = 0x40, // ADBUS6, general-ourpose i/o, GPIOL2
       l3 = 0x80  // ADBUS7, general-ourpose i/o, GPIOL3
    };
+   
+   // Chip-specific info
    const uint16_t vendor = 0x0403;
-   const uint16_t product = 0x6014; //6014 or 6010
+   const uint16_t product = 0x6014;
 
    const uint8_t pinInitialState = pins::CS0|pins::CS1|pins::CS2|pins::CS3; // Set these pins high
    const uint8_t pinDirection    = pins::SK|pins::DO|pins::CS0|pins::CS1|pins::CS2|pins::CS3; // Use these pins as outputs
@@ -39,11 +41,13 @@ namespace Ft232 {
    struct ftdi_context context;
 }
 
+// DAC register offsets
 namespace Dacx0501{
    const uint8_t DAC_DATA = 0x08;
    const uint8_t CONFIG = 0x03;
 }
 
+// ADC configuration bits
 namespace Lt230x{
    enum config{
       SINGLE_ENDED = 0x80,
@@ -52,6 +56,7 @@ namespace Lt230x{
    };
 }
 
+// Convert Dacx0501 12bit 2-complement output to volts
 float outToVolt(uint16_t out){
    uint16_t sign = out&0x800;
    float ret = -1.0*sign + 1.0*(out&0x7FF);
@@ -68,6 +73,7 @@ int main(void){
       exit(1);
    }
    int32_t iWrite = 0;
+   
    uint8_t* readBuf = (uint8_t*) calloc(Osci::bufSize, sizeof(uint8_t));
    if(readBuf == NULL){
       std::cout << "Failed to allocate readBuf\n";
@@ -92,6 +98,7 @@ int main(void){
    ftdi_set_bitmode(&Ft232::context, 0, 0); // reset
    ftdi_set_bitmode(&Ft232::context, 0, BITMODE_MPSSE); // enable mpsse on all bits
    ftdi_tcioflush(&Ft232::context);
+   
    // Max out chunksize
    ftdi_write_data_set_chunksize(&Ft232::context, Osci::chunkSize);
    ftdi_read_data_set_chunksize(&Ft232::context, Osci::chunkSize);
@@ -102,29 +109,29 @@ int main(void){
    
    // Setup MPSSE; Operation code followed by 0 or more arguments.
    writeBuf[iWrite++] = 0x8A;            // opcode: disable div by 5
+   
    writeBuf[iWrite++] = TCK_DIVISOR;     // opcode: set clk divisor
    writeBuf[iWrite++] = 0x00;            // argument: low bit. 60 MHz / ((1+0)*2) = 30 MHz
    writeBuf[iWrite++] = 0x00;            // argument: high bit.
-   writeBuf[iWrite++] = DIS_ADAPTIVE;    // opcode: disable adaptive clocking
-   writeBuf[iWrite++] = DIS_3_PHASE;     // opcode: disable 3-phase clocking
-   // writeBuf[iWrite++] = SET_BITS_LOW;    // opcode: set low bits (ADBUS[0-7])
-   // writeBuf[iWrite++] = Ft232::pinInitialState; // argument: inital pin states
-   // writeBuf[iWrite++] = Ft232::pinDirection;    // argument: pin direction
    
-   writeBuf[(iWrite)++] = SET_BITS_LOW;
-   writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3;
-   writeBuf[(iWrite)++] = Ft232::pinDirection;
+   writeBuf[iWrite++] = DIS_ADAPTIVE;    // opcode: disable adaptive clocking
+   
+   writeBuf[iWrite++] = DIS_3_PHASE;     // opcode: disable 3-phase clocking
+   
+   writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+   writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3; // argument: inital pin states, select DAC
+   writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction
 
-   writeBuf[(iWrite)++] = MPSSE_DO_WRITE;
-   writeBuf[(iWrite)++] = 0x02; // length: low byte, 0x0002 ==> 3 bytes
-   writeBuf[(iWrite)++] = 0x00; // length: high byte
-   writeBuf[(iWrite)++] = Dacx0501::CONFIG; 
-   writeBuf[(iWrite)++] = (uint8_t) 0x01; // disable internal ref
-   writeBuf[(iWrite)++] = (uint8_t) 0x00;
-
-   writeBuf[(iWrite)++] = SET_BITS_LOW;
-   writeBuf[(iWrite)++] = Ft232::pinInitialState;
-   writeBuf[(iWrite)++] = Ft232::pinDirection;
+   writeBuf[(iWrite)++] = MPSSE_DO_WRITE; // opcode: write on rising clock edge
+   writeBuf[(iWrite)++] = 0x02; // argument: length low byte, 0x0002 ==> 3 bytes
+   writeBuf[(iWrite)++] = 0x00; // argument: length high byte
+   writeBuf[(iWrite)++] = Dacx0501::CONFIG; // argument: first byte content -> configure DAC
+   writeBuf[(iWrite)++] = (uint8_t) 0x01; // argument: second byte content -> disable internal ref
+   writeBuf[(iWrite)++] = (uint8_t) 0x00; // argument: third byte content 
+   
+   writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+   writeBuf[(iWrite)++] = Ft232::pinInitialState; // argument: inital pin states, default
+   writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction (keep default)
 
    // Write the setup to the chip.
    if ( ftdi_write_data(&Ft232::context, writeBuf, iWrite) != iWrite ) {
@@ -133,104 +140,101 @@ int main(void){
       std::cout << "Config successful\n";
    }
 
-   struct timespec ts2 = { .tv_sec = 0, .tv_nsec = 50000000};
-   nanosleep(&ts2, NULL); 
-
-   // Zero the buffer for good measure
+   // Zero the buffer after using it for initialisation
    memset(writeBuf, 0, Osci::bufSize);
    iWrite = 0;
 
-   // Read the input csv
+   // Prepare input csv reading
    std::ifstream inFile;
    inFile.open("in.csv");
    std::string line;
 
-   // Prepare the write buffer
+   // Main loop: Read the input buffer, send it line-by-line to DAC
+   // Fill the read buffer line-by-line with the measurements
    while(getline(inFile, line)){
-      // uint16_t dacVal = dacVec[t];
-
-      uint16_t dacVal = (uint16_t) std::stoi(line);
+      uint16_t dacVal = (uint16_t) std::stoi(line); // Format read line
 
       //Write DAC
-      writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3;
-      writeBuf[(iWrite)++] = Ft232::pinDirection;
+      writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS3; // argument: inital pin states, select DAC
+      writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction
 
-      writeBuf[(iWrite)++] = MPSSE_DO_WRITE;
-      writeBuf[(iWrite)++] = 0x02; // length: low byte, 0x0002 ==> 3 bytes
-      writeBuf[(iWrite)++] = 0x00; // length: high byte
-      writeBuf[(iWrite)++] = Dacx0501::DAC_DATA; 
-      writeBuf[(iWrite)++] = (uint8_t) (((dacVal & 0x0FF0) >> 4) & 0x00FF);
-      writeBuf[(iWrite)++] = (uint8_t) ((dacVal & 0x000F) << 4); //60501 has 12bits, and needs the 4 last ones to be 0
+      writeBuf[(iWrite)++] = MPSSE_DO_WRITE; // opcode: write on rising clock edge
+      writeBuf[(iWrite)++] = 0x02; // argument: length low byte, 0x0002 ==> 3 bytes
+      writeBuf[(iWrite)++] = 0x00; // argument: length high byte
+      writeBuf[(iWrite)++] = Dacx0501::DAC_DATA; // argument: first byte content -> send DAC value
+      writeBuf[(iWrite)++] = (uint8_t) (((dacVal & 0x0FF0) >> 4) & 0x00FF); // argument: second byte content -> send MSB
+      writeBuf[(iWrite)++] = (uint8_t) ((dacVal & 0x000F) << 4); // argument: second byte content -> send first LSB
+      // 60501 has 12bits, and needs the 4 last ones to be 0
 
       // Read ADC0
-      writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS0;
-      writeBuf[(iWrite)++] = Ft232::pinDirection;
+      writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS0; // argument: inital pin states, select ADC0
+      writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE; // opcode: write on rising clock edge, read on rising clock edge
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
       writeBuf[(iWrite)++] = 0x00;//Lt230x::UNIPOLAR;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE; // opcode: write on rising clock edge, read on rising clock edge
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
-      (iRead) += 2;
+      (iRead) += 2; // read 12 bits on 2 bytes (the MSB of the second byte is irrelevant)
 
       // Read ADC1
-      writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS1;
-      writeBuf[(iWrite)++] = Ft232::pinDirection;
+      writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS1; // argument: inital pin states, select ADC1
+      writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE ; // opcode: write on rising clock edge, read on rising clock edge
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
-      writeBuf[(iWrite)++] = 0x00;
+      writeBuf[(iWrite)++] = 0x00;//Lt230x::UNIPOLAR;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE ; // opcode: write on rising clock edge, read on rising clock edge
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
-      (iRead) += 2;
+      (iRead) += 2; // read 12 bits on 2 bytes (the MSB of the second byte is irrelevant)
 
       // Read ADC2
-      writeBuf[(iWrite)++] = SET_BITS_LOW;
-      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS2;
-      writeBuf[(iWrite)++] = Ft232::pinDirection;
+      writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+      writeBuf[(iWrite)++] = Ft232::pinInitialState & ~Ft232::CS2; // argument: inital pin states, select ADC2
+      writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_DO_WRITE ; // opcode: write on rising clock edge, read on rising clock edge
       writeBuf[(iWrite)++] = 0x00; // length low byte, 0x0000 ==> 1 bytes
       writeBuf[(iWrite)++] = 0x00; // length high byte
-      writeBuf[(iWrite)++] = 0x00;
+      writeBuf[(iWrite)++] = 0x00; //Lt230x::UNIPOLAR;
 
-      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE;
+      writeBuf[(iWrite)++] = MPSSE_DO_READ | MPSSE_BITMODE ; // opcode: write on rising clock edge, read on falling clock edge
       writeBuf[(iWrite)++] = 0x03; // length, 0x0003 ==> 4 bits
-      (iRead) += 2;
+      (iRead) += 2; // read 12 bits on 2 bytes (the MSB of the second byte is irrelevant)
    }
-   inFile.close();
+   inFile.close(); // close the input file
 
    // Reset CS pins
-   writeBuf[(iWrite)++] = SET_BITS_LOW;
-   writeBuf[(iWrite)++] = Ft232::pinInitialState;
-   writeBuf[(iWrite)++] = Ft232::pinDirection;
+   writeBuf[(iWrite)++] = SET_BITS_LOW; // opcode: set low bits (ADBUS[0-7])
+   writeBuf[(iWrite)++] = Ft232::pinInitialState; // argument: inital pin states, default
+   writeBuf[(iWrite)++] = Ft232::pinDirection; // argument: pin direction (keep default)
 
    // Write and read data from Ft232
    ftdi_usb_purge_tx_buffer(&Ft232::context);
    ftdi_write_data_submit(&Ft232::context, writeBuf, iWrite);
    
    // Get the data that was read
+   // Open output file
    std::ofstream outFile;
    outFile.open("out.csv");
-   float res = 0;
-   if (ftdi_read_data(&Ft232::context, readBuf, iRead) != iRead) std::cout << "Read failed\n";
+   
+   float res = 0; // value to store the average
+   if (ftdi_read_data(&Ft232::context, readBuf, iRead) != iRead) std::cout << "Read failed\n"; // fill the readBuf with the read data, test for length
    else {
-      for(int i = 0; i < iRead; i+=6){
+      for(int i = 0; i < iRead; i+=6){ // decode the ADC values, which 12 bits on 2 bytes (the MSB of the second byte is irrelevant)
          uint16_t adc0 = (((uint16_t) readBuf[i]) << 4) + (readBuf[i+1] & 0x0F);
          uint16_t adc1 = (readBuf[i+2] << 4) + (readBuf[i+3] & 0x0F);
          uint16_t adc2 = (readBuf[i+4] << 4) + (readBuf[i+5] & 0x0F);
-         // std::cout << std::hex << (unsigned int) ((readBuf[i] << 4) + (readBuf[i+1] & 0x0F)) << "\n";
-         outFile << std::dec << adc0 << "; " << std::dec << adc1 << "; " << std::dec << adc2 << "\n";
-         if (i >=6){ // the first value read is always 0xFFF
-            // std::cout << outToVolt(adc0) << '\n';
-            res += outToVolt(adc0);
+         outFile << std::dec << adc0 << "; " << std::dec << adc1 << "; " << std::dec << adc2 << "\n"; // write the results to the output file
+         if (i >=6){ // the first value read not always reliable
+            res += outToVolt(adc0); 
          }
          
       }
