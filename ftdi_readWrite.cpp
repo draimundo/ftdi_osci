@@ -104,8 +104,8 @@ int main(void){
    ftdi_read_data_set_chunksize(&Ft232::context, Osci::chunkSize);
 
    // Sleep 50 ms for setup to complete
-   struct timespec ts = { .tv_sec = 0, .tv_nsec = 50000000};
-   nanosleep(&ts, NULL); 
+   // struct timespec ts = { .tv_sec = 0, .tv_nsec = 50000000};
+   // nanosleep(&ts, NULL); 
    
    // Setup MPSSE; Operation code followed by 0 or more arguments.
    writeBuf[iWrite++] = 0x8A;            // opcode: disable div by 5
